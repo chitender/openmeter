@@ -1,13 +1,5 @@
 -- drop dependent search view before widening charge currency columns
 DROP VIEW IF EXISTS "charges_search_v1s";
--- modify "billing_invoice_lines" table
-ALTER TABLE "billing_invoice_lines" ALTER COLUMN "currency" TYPE character varying(24);
--- modify "billing_invoice_split_line_groups" table
-ALTER TABLE "billing_invoice_split_line_groups" ALTER COLUMN "currency" TYPE character varying(24);
--- modify "billing_invoices" table
-ALTER TABLE "billing_invoices" ALTER COLUMN "currency" TYPE character varying(24);
--- modify "billing_standard_invoice_detailed_lines" table
-ALTER TABLE "billing_standard_invoice_detailed_lines" ALTER COLUMN "currency" TYPE character varying(24);
 -- modify "charge_credit_purchases" table
 ALTER TABLE "charge_credit_purchases" ALTER COLUMN "currency" TYPE character varying(24);
 -- modify "charge_flat_fee_run_detailed_lines" table
