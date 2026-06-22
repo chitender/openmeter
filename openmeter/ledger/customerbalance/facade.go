@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/alpacahq/alpacadecimal"
+	"github.com/samber/lo"
 
 	"github.com/openmeterio/openmeter/openmeter/customer"
 	"github.com/openmeterio/openmeter/openmeter/ledger"
@@ -19,13 +20,15 @@ type CurrencyFilter struct {
 }
 
 func (f CurrencyFilter) Validate() error {
-	for _, code := range f.Codes {
-		if code == "" {
-			return errors.New("currency code is required")
+	errs := lo.Map(f.Codes, func(code currencyx.Code, i int) error {
+		if err := code.Validate(); err != nil {
+			return fmt.Errorf("code %d: %w", i, err)
 		}
-	}
 
-	return nil
+		return nil
+	})
+
+	return models.NewNillableGenericValidationError(errors.Join(errs...))
 }
 
 type GetBalancesInput struct {

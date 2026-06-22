@@ -40,7 +40,7 @@ func (mixinBase) Fields() []ent.Field {
 			NotEmpty().
 			Immutable().
 			SchemaType(map[string]string{
-				dialect.Postgres: "varchar(3)",
+				dialect.Postgres: currencyx.PostgresCodeSchemaType,
 			}),
 
 		// TODO: remove these deprecated detailed-line tax fields after the parent-line

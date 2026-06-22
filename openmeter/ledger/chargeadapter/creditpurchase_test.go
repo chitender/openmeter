@@ -72,6 +72,32 @@ func TestOnPromotionalCreditPurchase_BacksAdvanceBeforeTopUp(t *testing.T) {
 	require.True(t, env.sumBalance(t, env.washSubAccount(t, alpacadecimal.Zero)).Equal(alpacadecimal.NewFromInt(-100)))
 }
 
+func TestOnPromotionalCreditPurchase_CustomCurrencyBacksAdvanceBeforeTopUp(t *testing.T) {
+	env := newCreditPurchaseHandlerTestEnv(t)
+	env.Currency = currencyx.Code("CREDITS")
+	env.createAdvanceExposure(t, alpacadecimal.NewFromInt(40))
+
+	charge := env.newPromotionalCharge(alpacadecimal.NewFromInt(100))
+	ref, err := env.handler.OnPromotionalCreditPurchase(t.Context(), charge)
+	require.NoError(t, err)
+	require.NotEmpty(t, ref.TransactionGroupID)
+	require.ElementsMatch(t, []string{
+		transactions.TemplateCode(transactions.AttributeCustomerAdvanceReceivableCostBasisTemplate{}),
+		transactions.TemplateCode(transactions.TranslateCustomerAccruedCostBasisTemplate{}),
+		transactions.TemplateCode(transactions.IssueCustomerReceivableTemplate{}),
+		transactions.TemplateCode(transactions.AuthorizeCustomerReceivablePaymentTemplate{}),
+		transactions.TemplateCode(transactions.SettleCustomerReceivableFromPaymentTemplate{}),
+	}, env.transactionTemplateCodes(t, ref.TransactionGroupID))
+
+	require.True(t, env.sumBalance(t, env.receivableSubAccount(t, alpacadecimal.Zero)).Equal(alpacadecimal.Zero))
+	require.True(t, env.sumBalance(t, env.authorizedReceivableSubAccount(t, alpacadecimal.Zero)).Equal(alpacadecimal.Zero))
+	require.True(t, env.sumBalance(t, env.unknownReceivableSubAccount(t)).Equal(alpacadecimal.Zero))
+	require.True(t, env.sumBalance(t, env.unknownAccruedSubAccount(t)).Equal(alpacadecimal.Zero))
+	require.True(t, env.sumBalance(t, env.accruedSubAccount(t, alpacadecimal.Zero)).Equal(alpacadecimal.NewFromInt(40)))
+	require.True(t, env.sumBalance(t, env.fboSubAccount(t, alpacadecimal.Zero)).Equal(alpacadecimal.NewFromInt(60)))
+	require.True(t, env.sumBalance(t, env.washSubAccount(t, alpacadecimal.Zero)).Equal(alpacadecimal.NewFromInt(-100)))
+}
+
 func TestOnCreditPurchaseInitiated_BackfillsOnlyMatchingFeatureAdvances(t *testing.T) {
 	env := newCreditPurchaseHandlerTestEnv(t)
 	env.createAdvanceExposureWithFeatures(t, alpacadecimal.NewFromInt(40), []string{"api-calls"})
@@ -459,7 +485,7 @@ func (e *creditPurchaseHandlerTestEnv) newPromotionalCharge(amount alpacadecimal
 					Name:              "Promotional Credit Purchase",
 					ManagedBy:         billing.SystemManagedLine,
 					CustomerID:        e.CustomerID.ID,
-					Currency:          currencyx.Code("USD"),
+					Currency:          e.Currency,
 					ServicePeriod:     servicePeriod,
 					FullServicePeriod: servicePeriod,
 					BillingPeriod:     servicePeriod,
@@ -499,7 +525,7 @@ func (e *creditPurchaseHandlerTestEnv) newExternalCharge(amount, costBasis alpac
 					Name:              "External Credit Purchase",
 					ManagedBy:         billing.SystemManagedLine,
 					CustomerID:        e.CustomerID.ID,
-					Currency:          currencyx.Code("USD"),
+					Currency:          e.Currency,
 					ServicePeriod:     servicePeriod,
 					FullServicePeriod: servicePeriod,
 					BillingPeriod:     servicePeriod,
@@ -511,7 +537,7 @@ func (e *creditPurchaseHandlerTestEnv) newExternalCharge(amount, costBasis alpac
 				Settlement: chargecreditpurchase.NewSettlement(chargecreditpurchase.ExternalSettlement{
 					InitialStatus: chargecreditpurchase.CreatedInitialPaymentSettlementStatus,
 					GenericSettlement: chargecreditpurchase.GenericSettlement{
-						Currency:  currencyx.Code("USD"),
+						Currency:  e.Currency,
 						CostBasis: costBasis,
 					},
 				}),

@@ -3,6 +3,7 @@ package chargeadapter
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -409,11 +410,6 @@ func (h *creditPurchaseHandler) advanceAttributions(
 		return nil, err
 	}
 
-	calculator, err := currency.Calculator()
-	if err != nil {
-		return nil, fmt.Errorf("get currency calculator: %w", err)
-	}
-
 	remaining := amount
 	attributions := make([]advanceAttribution, 0, len(advanceReceivables))
 	for _, advanceReceivable := range advanceReceivables {
@@ -446,7 +442,7 @@ func (h *creditPurchaseHandler) advanceAttributions(
 		}
 
 		if accruedAttributable.IsPositive() {
-			accruedAttributions, err := allocateAccruedAttribution(calculator, accruedAttributable, unattributedAccrued)
+			accruedAttributions, err := allocateAccruedAttribution(currency, accruedAttributable, unattributedAccrued)
 			if err != nil {
 				return nil, err
 			}
@@ -531,7 +527,7 @@ func (h *creditPurchaseHandler) unattributedAccruedBalances(ctx context.Context,
 }
 
 func allocateAccruedAttribution(
-	calculator currencyx.Calculator,
+	currency currencyx.Code,
 	amount alpacadecimal.Decimal,
 	unattributedAccrued []unattributedAccruedBalance,
 ) ([]currencyx.AmountAllocation[taxDimensionKey], error) {
@@ -547,13 +543,91 @@ func allocateAccruedAttribution(
 		})
 	}
 
-	allocations, err := currencyx.AllocateByAmount(calculator, currencyx.AmountAllocationInput[taxDimensionKey]{
-		Amount:     amount,
-		Items:      items,
-		CompareKey: compareTaxDimensionKey,
-	})
+	calculator, err := currency.Calculator()
+	if err == nil {
+		allocations, err := currencyx.AllocateByAmount(calculator, currencyx.AmountAllocationInput[taxDimensionKey]{
+			Amount:     amount,
+			Items:      items,
+			CompareKey: compareTaxDimensionKey,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("allocate accrued attribution: %w", err)
+		}
+
+		return allocations, nil
+	}
+
+	if err := currency.Validate(); err != nil {
+		return nil, fmt.Errorf("currency: %w", err)
+	}
+
+	allocations, err := allocateAccruedAttributionExactly(amount, items)
 	if err != nil {
 		return nil, fmt.Errorf("allocate accrued attribution: %w", err)
+	}
+
+	return allocations, nil
+}
+
+func allocateAccruedAttributionExactly(
+	amount alpacadecimal.Decimal,
+	items []currencyx.AmountAllocationItem[taxDimensionKey],
+) ([]currencyx.AmountAllocation[taxDimensionKey], error) {
+	if amount.Sign() < 0 {
+		return nil, errors.New("amount must be non-negative")
+	}
+
+	if amount.IsZero() {
+		return nil, nil
+	}
+
+	if len(items) == 0 {
+		return nil, errors.New("items are required for a non-zero amount")
+	}
+
+	totalAmount := alpacadecimal.Zero
+	for i, item := range items {
+		if item.Amount.Sign() <= 0 {
+			return nil, fmt.Errorf("items[%d].amount must be positive", i)
+		}
+
+		totalAmount = totalAmount.Add(item.Amount)
+	}
+
+	if amount.GreaterThan(totalAmount) {
+		return nil, errors.New("amount must not exceed total item amount")
+	}
+
+	remainingAmount := amount
+	remainingTotal := totalAmount
+	allocations := make([]currencyx.AmountAllocation[taxDimensionKey], 0, len(items))
+
+	for _, item := range items {
+		if !remainingAmount.IsPositive() {
+			break
+		}
+
+		allocated := remainingAmount
+		if item.Amount.LessThan(remainingTotal) {
+			allocated = remainingAmount.Mul(item.Amount).Div(remainingTotal)
+		}
+		if allocated.GreaterThan(item.Amount) {
+			allocated = item.Amount
+		}
+
+		if allocated.IsPositive() {
+			allocations = append(allocations, currencyx.AmountAllocation[taxDimensionKey]{
+				Key:    item.Key,
+				Amount: allocated,
+			})
+		}
+
+		remainingAmount = remainingAmount.Sub(allocated)
+		remainingTotal = remainingTotal.Sub(item.Amount)
+	}
+
+	if remainingAmount.IsPositive() {
+		return nil, errors.New("cannot distribute remaining allocation without exceeding item amounts")
 	}
 
 	return allocations, nil
