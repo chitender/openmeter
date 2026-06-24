@@ -80,21 +80,11 @@ func (i ListCurrenciesInput) Validate() error {
 	return errors.Join(errs...)
 }
 
-// CurrencyType distinguishes custom currencies from ISO/fiat ones.
-type CurrencyType string
-
-func (t CurrencyType) Validate() error {
-	switch t {
-	case CurrencyTypeCustom, CurrencyTypeFiat:
-		return nil
-	default:
-		return fmt.Errorf("currency type: %s", t)
-	}
-}
+type CurrencyType = currencyx.CurrencyType
 
 const (
-	CurrencyTypeCustom CurrencyType = "custom"
-	CurrencyTypeFiat   CurrencyType = "fiat"
+	CurrencyTypeCustom = currencyx.CurrencyTypeCustom
+	CurrencyTypeFiat   = currencyx.CurrencyTypeFiat
 )
 
 var _ models.Validator = (*CreateCurrencyInput)(nil)
@@ -115,8 +105,13 @@ func (i CreateCurrencyInput) Validate() error {
 
 	if i.Code == "" {
 		errs = append(errs, errors.New("code is required"))
-	} else if err := currencyx.Code(i.Code).ValidateCustom(); err != nil {
-		errs = append(errs, fmt.Errorf("code: %w", err))
+	} else {
+		code := currencyx.Code(i.Code)
+		if err := code.Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("code: %w", err))
+		} else if code.CurrencyType() != currencyx.CurrencyTypeCustom {
+			errs = append(errs, errors.New("code: custom currency code cannot conflict with fiat currency code"))
+		}
 	}
 
 	if i.Name == "" {
@@ -162,8 +157,13 @@ func (i CreateCostBasisInput) Validate() error {
 
 	if i.FiatCode == "" {
 		errs = append(errs, errors.New("fiat_code is required"))
-	} else if err := currencyx.Code(i.FiatCode).ValidateFiat(); err != nil {
-		errs = append(errs, fmt.Errorf("fiat_code: %w", err))
+	} else {
+		code := currencyx.Code(i.FiatCode)
+		if err := code.Validate(); err != nil {
+			errs = append(errs, fmt.Errorf("fiat_code: %w", err))
+		} else if code.CurrencyType() != currencyx.CurrencyTypeFiat {
+			errs = append(errs, errors.New("fiat_code: currency code must be a known fiat currency"))
+		}
 	}
 
 	if !i.Rate.IsPositive() {
@@ -197,8 +197,13 @@ func (i ListCostBasesInput) Validate() error {
 	if i.FilterFiatCode != nil {
 		if *i.FilterFiatCode == "" {
 			errs = append(errs, errors.New("filter_fiat_code is required"))
-		} else if err := currencyx.Code(*i.FilterFiatCode).ValidateFiat(); err != nil {
-			errs = append(errs, fmt.Errorf("filter_fiat_code: %w", err))
+		} else {
+			code := currencyx.Code(*i.FilterFiatCode)
+			if err := code.Validate(); err != nil {
+				errs = append(errs, fmt.Errorf("filter_fiat_code: %w", err))
+			} else if code.CurrencyType() != currencyx.CurrencyTypeFiat {
+				errs = append(errs, errors.New("filter_fiat_code: currency code must be a known fiat currency"))
+			}
 		}
 	}
 

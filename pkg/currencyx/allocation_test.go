@@ -87,6 +87,26 @@ func TestAllocateByWeight(t *testing.T) {
 		}, allocations)
 	})
 
+	t.Run("uses default custom whole-unit precision", func(t *testing.T) {
+		custom := testCalculator(t, "CREDITS")
+
+		allocations, err := currencyx.AllocateByWeight(custom, currencyx.WeightedAllocationInput[string]{
+			Amount: dec("5"),
+			Items: []currencyx.WeightedAllocationItem[string]{
+				{Key: "A", Weight: dec("1")},
+				{Key: "B", Weight: dec("1")},
+				{Key: "C", Weight: dec("1")},
+			},
+		})
+		require.NoError(t, err)
+
+		requireAllocationsEqual(t, []currencyx.WeightedAllocation[string]{
+			{Key: "A", Amount: dec("2")},
+			{Key: "B", Amount: dec("2")},
+			{Key: "C", Amount: dec("1")},
+		}, allocations)
+	})
+
 	t.Run("omits zero allocations", func(t *testing.T) {
 		allocations, err := currencyx.AllocateByWeight(usd, currencyx.WeightedAllocationInput[string]{
 			Amount: dec("0.01"),
@@ -192,6 +212,23 @@ func TestAllocateByWeightValidation(t *testing.T) {
 			{Key: "A", Amount: dec("0.33")},
 			{Key: "B", Amount: dec("0.67")},
 		}, allocations)
+	})
+
+	t.Run("custom amount must use configured precision", func(t *testing.T) {
+		custom := currencyx.Calculator{
+			Currency: currencyx.Code("CREDITS"),
+			Rounding: currencyx.Rounding{
+				Precision: 2,
+			},
+		}
+
+		_, err := currencyx.AllocateByWeight(custom, currencyx.WeightedAllocationInput[string]{
+			Amount: dec("1.001"),
+			Items: []currencyx.WeightedAllocationItem[string]{
+				{Key: "A", Weight: dec("1")},
+			},
+		})
+		require.ErrorContains(t, err, "amount must be rounded to currency precision")
 	})
 }
 

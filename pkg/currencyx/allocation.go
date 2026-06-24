@@ -85,7 +85,7 @@ func AllocateByWeight[T any](calculator Calculator, input WeightedAllocationInpu
 	allocated := alpacadecimal.Zero
 	for i, item := range input.Items {
 		share := input.Amount.Mul(item.Weight).Div(totalWeight)
-		amount := share.RoundDown(int32(calculator.Def.Subunits))
+		amount := roundDownToPrecision(calculator, share)
 
 		candidates = append(candidates, allocationCandidate{
 			index:     i,
@@ -110,15 +110,16 @@ func AllocateByWeight[T any](calculator Calculator, input WeightedAllocationInpu
 		return cmp.Compare(left.index, right.index)
 	})
 
-	unit := currencyUnit(calculator)
-	remaining := input.Amount.Sub(allocated)
-	for i := range candidates {
-		if remaining.LessThan(unit) {
-			break
-		}
+	if unit, ok := currencyUnit(calculator); ok {
+		remaining := input.Amount.Sub(allocated)
+		for i := range candidates {
+			if remaining.LessThan(unit) {
+				break
+			}
 
-		candidates[i].amount = candidates[i].amount.Add(unit)
-		remaining = remaining.Sub(unit)
+			candidates[i].amount = candidates[i].amount.Add(unit)
+			remaining = remaining.Sub(unit)
+		}
 	}
 
 	slices.SortFunc(candidates, func(left, right allocationCandidate) int {
@@ -169,7 +170,7 @@ func AllocateByAmount[T any](calculator Calculator, input AmountAllocationInput[
 	allocated := alpacadecimal.Zero
 	for i, item := range input.Items {
 		share := input.Amount.Mul(item.Amount).Div(totalAmount)
-		floor := share.RoundDown(int32(calculator.Def.Subunits))
+		floor := roundDownToPrecision(calculator, share)
 
 		candidates = append(candidates, allocationCandidate{
 			index:     i,
@@ -195,28 +196,29 @@ func AllocateByAmount[T any](calculator Calculator, input AmountAllocationInput[
 		return cmp.Compare(left.index, right.index)
 	})
 
-	unit := currencyUnit(calculator)
-	remaining := input.Amount.Sub(allocated)
-	for remaining.GreaterThanOrEqual(unit) {
-		distributed := false
+	if unit, ok := currencyUnit(calculator); ok {
+		remaining := input.Amount.Sub(allocated)
+		for remaining.GreaterThanOrEqual(unit) {
+			distributed := false
 
-		for i := range candidates {
-			if remaining.LessThan(unit) {
-				break
+			for i := range candidates {
+				if remaining.LessThan(unit) {
+					break
+				}
+
+				next := candidates[i].allocated.Add(unit)
+				if next.GreaterThan(candidates[i].amount) {
+					continue
+				}
+
+				candidates[i].allocated = next
+				remaining = remaining.Sub(unit)
+				distributed = true
 			}
 
-			next := candidates[i].allocated.Add(unit)
-			if next.GreaterThan(candidates[i].amount) {
-				continue
+			if !distributed {
+				return nil, errors.New("cannot distribute remaining allocation without exceeding item amounts")
 			}
-
-			candidates[i].allocated = next
-			remaining = remaining.Sub(unit)
-			distributed = true
-		}
-
-		if !distributed {
-			return nil, errors.New("cannot distribute remaining allocation without exceeding item amounts")
 		}
 	}
 
@@ -311,6 +313,14 @@ func validateAmountAllocationInput[T any](calculator Calculator, input AmountAll
 	return errors.Join(errs...)
 }
 
-func currencyUnit(calculator Calculator) alpacadecimal.Decimal {
-	return alpacadecimal.NewFromInt(1).Shift(-int32(calculator.Def.Subunits))
+func roundDownToPrecision(calculator Calculator, amount alpacadecimal.Decimal) alpacadecimal.Decimal {
+	return calculator.effectiveRounding().RoundDown(amount)
+}
+
+func currencyUnit(calculator Calculator) (alpacadecimal.Decimal, bool) {
+	if err := calculator.effectiveRounding().Validate(); err != nil {
+		return alpacadecimal.Zero, false
+	}
+
+	return calculator.effectiveRounding().Unit(), true
 }
