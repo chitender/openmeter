@@ -34,7 +34,8 @@ func (c BillingConfiguration) Validate() error {
 }
 
 type BillingFeatureSwitchesConfiguration struct {
-	NamespaceLockdown []string
+	NamespaceLockdown                 []string
+	SubscriptionSyncForceAsyncAdvance bool
 }
 
 func (c BillingFeatureSwitchesConfiguration) Validate() error {
@@ -50,4 +51,5 @@ func ConfigureBilling(v *viper.Viper, flags *pflag.FlagSet) {
 	_ = v.BindPFlag("billing.advancementStrategy", flags.Lookup("billing-advancement-strategy"))
 	v.SetDefault("billing.advancementStrategy", billing.ForegroundAdvancementStrategy)
 	v.SetDefault("billing.maxParallelQuantitySnapshots", 4)
+	v.SetDefault("billing.featureSwitches.subscriptionSyncForceAsyncAdvance", true)
 }

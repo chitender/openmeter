@@ -212,7 +212,7 @@ func NewBillingRegistry(
 	if err != nil {
 		return BillingRegistry{}, err
 	}
-	subscriptionSyncService, err := NewBillingSubscriptionSyncService(logger, subscriptionServices, billingRegistry, subscriptionSyncAdapter, tracer, creditsConfig, featureGate)
+	subscriptionSyncService, err := NewBillingSubscriptionSyncService(logger, subscriptionServices, billingRegistry, subscriptionSyncAdapter, tracer, creditsConfig, fsConfig, featureGate)
 	if err != nil {
 		return BillingRegistry{}, err
 	}
@@ -289,7 +289,7 @@ func NewBillingSubscriptionSyncAdapter(db *entdb.Client) (subscriptionsync.Adapt
 	})
 }
 
-func NewBillingSubscriptionSyncService(logger *slog.Logger, subsServices SubscriptionServiceWithWorkflow, billingRegistry BillingRegistry, subscriptionSyncAdapter subscriptionsync.Adapter, tracer trace.Tracer, creditsConfig config.CreditsConfiguration, featureGate *featuregate.FeatureGateChecker) (subscriptionsync.Service, error) {
+func NewBillingSubscriptionSyncService(logger *slog.Logger, subsServices SubscriptionServiceWithWorkflow, billingRegistry BillingRegistry, subscriptionSyncAdapter subscriptionsync.Adapter, tracer trace.Tracer, creditsConfig config.CreditsConfiguration, fsConfig config.BillingFeatureSwitchesConfiguration, featureGate *featuregate.FeatureGateChecker) (subscriptionsync.Service, error) {
 	return subscriptionsyncservice.New(subscriptionsyncservice.Config{
 		SubscriptionService:     subsServices.Service,
 		BillingService:          billingRegistry.Billing,
@@ -298,8 +298,9 @@ func NewBillingSubscriptionSyncService(logger *slog.Logger, subsServices Subscri
 		FeatureFlags: subscriptionsyncservice.FeatureFlags{
 			EnableCreditThenInvoice: creditsConfig.EnableCreditThenInvoice,
 		},
-		Logger:      logger,
-		Tracer:      tracer,
-		FeatureGate: featureGate,
+		ForceAsyncInvoicePendingLines: fsConfig.SubscriptionSyncForceAsyncAdvance,
+		Logger:                        logger,
+		Tracer:                        tracer,
+		FeatureGate:                   featureGate,
 	})
 }

@@ -96,6 +96,8 @@ server:
 billing:
   # for production deployments it's recommended to use queued for server only
   # advancementStrategy: foreground
+  featureSwitches:
+    subscriptionSyncForceAsyncAdvance: true
 
 credits:
   enabled: true
